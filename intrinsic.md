@@ -1,3 +1,33 @@
+### Intrinsic测试用例自动生成器:
+接口有两种类型:
+> + 一种是Statement，如返回值为void类型的接口，无法被其他接口调用，类似这种接口，都实现为Statement。
+> + 一种是Expression， 这种接口可以被其他接口调用。
+
+有三颗树，一颗operation树，一颗value树，一颗block树。
+> + operation有两个子节点，Statement和Expression(以下为默认开启的节点，不包含intrinsic节点)
+>> + Statement有ControlStatement,以及各种Assign
+>>> + ControlStatement中有if, for, switch
+>> + Expression中有add, sub, less等
+> + value子节点为int，float，schar，向量，矩阵等
+> + block待补充
+
+无控制语句时:
+在生成一条语句时，语句顶层部分一定为Statement。
+先会在Statement中随机一个子节点op，随后会调用该op具体的generate。
+在generate过程中，会随机进行Expression和value子节点的随机。
+如果随机为Expression的子节点，会继续进行上面的操作，直至随机到value节点。
+
+for:
+循环控制变量和循环体无关，只是单纯的生成了形似for (auto i = a; i <= b; i++) {}，大括号内和无控制语句的流程相同。
+
+if:
+在生成语句时，如果语句顶层为if，那么该语句并不会进行随机，而是属于ValueBase中的bool节点
+
+switch:
+在生成语句时，如果语句顶层为switch，那么该语句并不会进行随机，而是属于ValueBase中的int节点
+
+
+
 ## 记录一下intrinsic内部实现
 ### main.cc
 1.读取解析配置文件
@@ -42,3 +72,14 @@ type为Statement
 由于generate和executeOnlySelf均为虚函数，所以此时会调用子节点具体的generate和executeOnlySelf
 
 #### 简单版本的实现2(无控制语句，单个Expression)
+1. in main
+2. in Program::Program
+> + Operator op = Operator::random(nullptr, nullptr, tyep)
+type为Statement
+3. in OperationBase::random
+> + Operation operation = getRandom<OperationBase>(type)
+这里从所有Statement树的子节点中随机一个operation，此时的Statement为Assign
+4. 4. in OperationBase::generateAndRestoreIfFailed
+该接口内分为generate和executeOnlySelf
+由于generate和executeOnlySelf均为虚函数，所以此时会调用子节点具体的generate和executeOnlySelf,此时为assign_by_expr_shared.cc
+调用assign_by_expr的generate时，要求
