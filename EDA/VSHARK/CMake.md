@@ -1,3 +1,4 @@
+https://zhuanlan.zhihu.com/p/500002865
 # step 1: 构建最小项目
 最基本的项目是将一个源代码文件生成可执行文件。
 ```cmake
