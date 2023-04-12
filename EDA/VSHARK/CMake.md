@@ -225,3 +225,148 @@ const double outputValue = mysqrt(inputValue);
 ```cmake
 option(USE_MYMATH "Use tutorial provided math implementation" ON)
 ```
+
+`option`表示用户可以选择的选项。命令格式为:`option(<variable> "description [initial value])`。
+
+`USE_MYMATH`这个选项缺省值为ON，用户可以更改这个值。此设置将存储在缓存中，以便用户不需要在每次构建项目时设置该值。
+
+下一个更改是使MathFunctions库的构建和链接成为条件。于是创建一个if语句，该语句检查选项`USE_MYMATH`的值。
+
+```cmkae
+if(USE_MYMATH)
+    add_subdirectory(MathFunctions)
+    list(APPEND EXTRA_LIBS MathFunctions)
+    list(APPEND EXTRA_INCLUDES ${PROJECT_SOURCE_DIR}/MathFunctions)
+endif()
+
+# add the executable
+add_executable(${PROJECT_NAME} tutorial.cpp)
+
+target_link_libraries(${PROJECT_NAME} PUBLIC ${EXTRA_LIBS})
+
+# add the binary tree to the search path for include files
+# so that we will find TutorialConfig.h
+
+target_include_directories(${PROJECT_NAME} PUBLIC
+                           ${PROJECT_BINARY_DIR}
+                           ${EXTRA_INCLUDES}
+                           )
+```
+
+在if块中，有`add_subdirectory`命令和`list`命令，`APPEND`表示将元素`MathFunctions`追加到列表`EXTRA_LIBS`中，将元素`${PROJECT_SOURCE_DIR}/MathFunctions`追加到列表`EXTRA_INCLUDES`中。`EXTRA_LIBS`存储MathFunctions库，`EXTRA_INCLUDES`存储MathFunctions头文件。
+
+变量EXTRA_LIBS用来保存需要链接到可执行程序的可选库，变量EXTRA_INCLUDES用来保存可选的头文件搜索路径。这是处理可选组件的经典方法，将在下一步介绍现代方法。
+
+接下来对源代码进行修改。首先，在tutorial.cpp中包含MathFunctions.h头文件:
+
+```c++
+#ifdef USE_MYMATH
+    #include "MathFunctions.h"
+#endif
+```
+
+然后，还在tutorial.cpp中，使用`USE_MYMATH`选择使用哪个平方根函数:
+
+```c++
+#ifdef USE_MYMATH
+    const double outputValue = mysqrt(inputValue);
+#else
+    const double outputValue = sqrt(intputValue);
+#endif
+```
+
+因为源代码使用USE_MYMATH宏，可以用下面的行添加到tutorialconfig.h.in文档中:
+
+```cmake
+// TutorialConfig.h.in
+# cmakedefind USE_MYMATH
+```
+
+现在使用cmake命令构建项目，并运行生成的Tutorial可执行文件。
+
+默认调用 mysqrt 函数，也可以在构建项目时指定 USE_MYMATH 的值为 OFF：
+
+```
+> cmake -DUSE_MYMATH=OFF ..
+> cmake --build .
+```
+
+# step 5: 添加库的使用要求
+使用要求会对库或可执行程序的链接、头文件包含命令行提供了更好的控制，也是CMake中目标的传递目标属性更加可控。利用使用要求的主要命令是:
+> + target_compile_definitions()
+> + target_compile_options()
+> + target_include_directories()
+> + target_link_libraries()
+
+现在重构一下step4中的代码，使用更加现代的CMake方法来包含MathFuncitons库的头文件。
+
+首先声明，链接MathFunctions库的任何可执行文件/库文件都需要包含MathFunctions目录作为头文件路径，而MathFunctions本身不需要包含，这被称为`INTERFACE`使用要求
+
+`INTERFACE`是指用户需要，开发者不需要的那些东西。在MathFunctions/CMakeLists.txt最后添加:
+
+```cmake
+# MathFunctions/CMakeLists.txt
+target_include_directories(MathFunctions
+            INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+```
+
+`CMAKE_CURRENT_SOURCE_DIR`表示MathFunctions库所在目录。
+
+现在我们已经为MathFunctions指定了使用要求`INTERFACE`，那么可以从顶级CMakeList.txt中删除`EXTRA_INCLUDES`变量的相关使用:
+
+```cmake
+if(USE_MYMATH)
+    add_subdirectory(MathFunctions)
+    list(APPEND EXTRA_LIBS MathFunctions)
+    list(APPEND EXTRA_INCLUDES ${PROJECT_SOURCE_DIR}/MathFunctions) # 删除此行
+endif
+
+# add the binary tree to the search path for include files
+# so that we will find TutorialConfig.h
+target_include_directories(${PROJECT_NAME} PUBLIC
+                           ${PROJECT_BINARY_DIR}
+                           ${EXTRA_INCLUDES}   # 删除此行
+                           )
+```
+
+现在只要是链接了MathFunctions库，就会自动包含MathFunctions所在目录的头文件，简介而优雅。
+
+这里补充两个知识点:
+
+1、使用要求除了`INTERFACE`,还有`PRIVATE`和`PUBLIC`。`INTERFACE`表示用户需要，开发者不需要，`PRIVATE`表示用户不需要，开发者需要，`PUBLIC`表示用户和开发者都需要。
+
+2、 这里使用add_library命令生成的MathFunctions库其实是静态链接库。动态库和静态库的区别是:静态库在连接阶段会被链接到最终目标中(比如可执行程序)，缺点是同一个静态库如果被不同的程序引用，那么内存中会存在这个静态库函数的多份拷贝。动态库在链接阶段不会被拷贝到最终目标中，程序在运行阶段才会加载这个动态库。所以多个程序就算引用了同一个动态库，内存中也只存在一份动态库函数的拷贝。
+
+# step 6: build目录介绍
+在文本中，都是创建了一个build用来存放cmake构建和编译的产物，这里简单说下里面有些什么东西。
+
+```
+build/
+    CMakeCache.txt
+    CMakeFiles/
+    cmake_install.cmake
+    Makefile
+    Tutorial.exe
+    TutorialConfig.h
+    MathFunctions/
+```
+
+其中`Makfile`是根据顶级CMakeLists.txt生成的构建文件，通过该文件可以对整个项目进行编译。
+
+`Tutorial.exe`就是生成的可执行文件，通过该文件运行程序。
+
+`TutorialConfig.h`是用于配置信息的头文件，是cmake根据TutorialConfig.h.in文件自动生成的。
+
+还有个MathFunctions文件夹:
+```
+MathFunctions/
+    CMakeFiles/
+    cmake_install.cmake
+    Makefile
+    libMathFunctions.a
+```
+
+其中`Makefile`是cmake根据MathFunctions目录下的CMakeLists.txt生成的构建文件。
+
+`libMathFunctions.a`则是MathFunctions静态链接库，可执行文件会通过这个库调用mysqrt函数。
